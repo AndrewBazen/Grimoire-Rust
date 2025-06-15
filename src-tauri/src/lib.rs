@@ -11,6 +11,13 @@ pub static APP_DIR: Lazy<PathBuf> = Lazy::new(|| {
         .join("Grimoire")
 });
 
+/// create the app dir if it doesn't exist
+pub fn create_app_dir() {
+    if !APP_DIR.exists() {
+        std::fs::create_dir_all(&*APP_DIR).expect("Failed to create app directory");
+    }
+}
+
 /// Archives live in `<home>/Grimoire/archives`.
 pub static ARCHIVES_DIR: Lazy<PathBuf> = Lazy::new(|| APP_DIR.join("archives"));
 
@@ -36,8 +43,15 @@ pub fn entry_path(archive_id: &str, tome_id: &str, entry_id: &str) -> PathBuf {
     entries_dir(archive_id, tome_id).join(entry_id)
 }
 
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Ensure the directory skeleton exists before the frontend makes any invokes
+    create_app_dir();
+    if !ARCHIVES_DIR.exists() {
+        std::fs::create_dir_all(&*ARCHIVES_DIR).expect("Failed to create archives directory");
+    }
+
     tauri::Builder::default()
         .invoke_handler(tauri::generate_handler![
             commands::list_notes,
@@ -50,6 +64,8 @@ pub fn run() {
             commands::load_tome,
             commands::create_tome,
             commands::delete_tome,
+            commands::list_archives,
+            commands::list_tomes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -1,5 +1,6 @@
 use std::fs;
-use crate::{archive_path, tome_path, entry_path, tomes_dir, entries_dir};
+use uuid::Uuid;
+use crate::{archive_path, tome_path, entries_dir, ARCHIVES_DIR, tomes_dir, entry_path};
 
 #[tauri::command]
 pub fn list_notes(archive_id: String, tome_id: String) -> Vec<String> {
@@ -40,11 +41,17 @@ pub fn delete_note(archive_id: String, tome_id: String, entry_id: String) {
 #[tauri::command]
 pub fn create_archive(archive_id: String) {
     let archive_dir = archive_path(&archive_id);
-    if archive_dir.exists() {
-        return;
+
+    // Create the archive directory if it doesn't exist
+    if !archive_dir.exists() {
+        fs::create_dir(&archive_dir).expect("Failed to create archive");
     }
-    fs::create_dir(&archive_dir).expect("Failed to create archive");
-    fs::create_dir(archive_dir.join("tomes")).expect("Failed to create tomes directory");
+
+    // Always ensure the nested "tomes" directory exists
+    let tomes = archive_dir.join("tomes");
+    if !tomes.exists() {
+        fs::create_dir(&tomes).expect("Failed to create tomes directory");
+    }
 }
 
 #[tauri::command]
@@ -75,7 +82,8 @@ pub fn load_tome(archive_id: String, tome_id: String) -> Vec<String> {
 }
 
 #[tauri::command]
-pub fn create_tome(archive_id: String, tome_id: String) {
+pub fn create_tome(archive_id: String) {
+    let tome_id = Uuid::new_v4().to_string();
     let tome = tome_path(&archive_id, &tome_id);
     if tome.exists() {
         return;
@@ -91,4 +99,39 @@ pub fn delete_tome(archive_id: String, tome_id: String) {
         return;
     }
     fs::remove_dir_all(&tome).expect("Failed to delete tome");
+}
+
+/// Return the list of all archives currently present on disk (names only).
+#[tauri::command]
+pub fn list_archives() -> Vec<String> {
+    if !ARCHIVES_DIR.exists() {
+        // Ensure top-level directory exists so callers get an empty vec instead of an error
+        fs::create_dir_all(&*ARCHIVES_DIR).expect("Failed to create archives directory");
+    }
+
+    fs::read_dir(&*ARCHIVES_DIR)
+        .expect("Failed to read archives directory")
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.path().file_name().map(|s| s.to_string_lossy().into_owned()))
+        .collect()
+}
+
+/// Return the list of tomes inside the given archive (names only).
+#[tauri::command]
+pub fn list_tomes(archive_id: String) -> Vec<String> {
+    let dir = tomes_dir(&archive_id);
+
+    if !dir.exists() {
+        // Ensure directory exists so we return empty vec instead of error
+        if let Err(err) = fs::create_dir_all(&dir) {
+            eprintln!("Failed to create tomes directory: {err}");
+            return vec![];
+        }
+    }
+
+    fs::read_dir(&dir)
+        .expect("Failed to read tomes directory")
+        .filter_map(|entry| entry.ok())
+        .filter_map(|entry| entry.path().file_name().map(|s| s.to_string_lossy().into_owned()))
+        .collect()
 }

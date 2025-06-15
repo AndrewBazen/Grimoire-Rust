@@ -1,33 +1,82 @@
-import React, { useEffect, useState } from 'react'
-import { listNotes, readText } from "../hooks/noteCmds";
-import Collection from '../components/ArchiveView';
-import Note from '../components/Note';
+import "@mantine/core/styles.css";
+import { AppShell, Text, Divider, Tree } from "@mantine/core";
+import { useState, useEffect } from "react";
+import { useArchiveTree } from "../hooks/useArchiveTree";
+import ArchiveView from "../components/ArchiveView";
+import { listen } from "@tauri-apps/api/event";
+import { useLocation } from "react-router-dom";
 
-function MainPage() {
-  const [notes, setNotes] = useState([]);
-  const [selectedNote, setSelectedNote] = useState(null);
-  const [selectedTome, setSelectedTome] = useState(null);
-  const [tomes, setTomes] = useState([]);
 
+export default function MainPage() {
+  const location = useLocation();
+  const archive = location.state?.archive;
+  const [activeArchive, setActiveArchive] = useState(archive);
+  const { treeData, loading } = useArchiveTree(archive);
+
+  // Subscribe once to archive-selected events from the archive manager window
   useEffect(() => {
-    const fetchNotes = async () => {
-      const notes = await listNotes();
-      setNotes(notes);
+    const unlistenPromise = listen("archive-selected", (e) => {
+      const { archiveId } = e.payload;
+      setActiveArchive(archiveId);
+    });
+    return () => {
+      // Ensure we remove listener on unmount
+      unlistenPromise.then((un) => un());
     };
-    fetchNotes();
   }, []);
+
   return (
-    <main className="container" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh" }}>
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", height: "100vh" }}>
-      <h1>Grimoire</h1>
-      <p>A simple note-taking app</p>
-      <div style={{ display: "flex", flexDirection: "row", alignItems: "center", justifyContent: "center", height: "100vh" }}>
-        <Collection Tomes={tomes} selectedTome={selectedTome} setSelectedTome={setSelectedTome} />
-        <Note note={selectedNote} setSelectedNote={setSelectedNote} />
-      </div>
-    </div>
-    </main>
+    <AppShell
+      // describe the size of the slots
+      header={{ height: 40}}
+      navbar={{ width: 240}}
+      padding="md"
+      styles={{
+        main: { backgroundColor: "#1A1A1A",
+          display: "flex",
+          border: "1px solid #2A2A2A"
+        },
+        header: { backgroundColor: "#1A1A1A",
+          alignItems: "center",
+          display: "flex",
+          padding: "10px",
+          border: "1px solid #2A2A2A"
+        },
+        navbar: { backgroundColor: "#1A1A1A",
+          alignItems: "flex-start",
+          display: "flex",
+          padding: "10px",
+          border: "1px solid #2A2A2A"
+        },
+      }}
+    >
+      {/* header content */}
+      <AppShell.Header
+      >
+        <Text fw={700} c="white">Grimoire</Text>
+      </AppShell.Header>
+
+      {/* sidebar content */}
+      <AppShell.Navbar>
+        {activeArchive ? (
+          <>
+            <Text c="white">Tomes in {activeArchive}</Text>
+            <Divider my="sm" />
+            {loading ? (
+              <Text c="white">Loading…</Text>
+            ) : (
+              <Tree data={treeData} />
+            )}
+          </>
+        ) : (
+          <Text c="white">Select an archive to see its tomes</Text>
+        )}
+      </AppShell.Navbar>
+
+      {/* main page content */}
+      <AppShell.Main>
+        <ArchiveView onSelectArchive={setActiveArchive} />
+      </AppShell.Main>
+    </AppShell>
   );
 }
-
-export default MainPage;
